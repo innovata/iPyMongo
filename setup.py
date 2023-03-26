@@ -21,5 +21,5 @@ setuptools.setup(
     package_dir={"":"src"},
     packages=setuptools.find_packages(),
     python_requires=">=3.8",
-    install_requires=['pymongo'],
+    install_requires=['pymongo', 'pandas', 'ipylib'],
 )
