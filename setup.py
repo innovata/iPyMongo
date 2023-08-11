@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="innomongo",
+    name="ipymongodb",
     version="0.1.0",
     author="innovata sambong",
     author_email="iinnovata@gmail.com",
@@ -19,7 +19,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     package_dir={"":"src"},
-    packages=setuptools.find_packages(),
+    packages=setuptools.find_packages("src"),
     python_requires=">=3.8",
     install_requires=['pymongo', 'pandas', 'ipylib'],
 )
