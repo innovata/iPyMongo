@@ -6,13 +6,13 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="ipymongodb",
-    version="0.1.0",
+    version="0.1.3",
     author="innovata sambong",
     author_email="iinnovata@gmail.com",
     description='pymongo 패키지 wrapper',
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url=f"https://github.com/innovata/PyMongoDB",
+    url=f"https://github.com/innovata/iPyMongo",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
