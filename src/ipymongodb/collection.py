@@ -67,11 +67,10 @@ class SchemaModel(Collection):
     SchemaKeyField = 'column'
     modelType = 'SchemaModel'
 
-    def __init__(self, dbName, modelName=None):
-        if modelName is None: modelName = self.__class__.__name__
-        else: pass
+    def __init__(self, dbName, modelName):
         self.modelName = modelName
-        super().__init__(dbName, f"_Schema_{modelName}")
+        collName = f"_Schema_{modelName}"
+        super().__init__(dbName, collName)
 
     def __get_cols__(self, f={}): return self.distinct('column', f)
 
