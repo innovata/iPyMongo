@@ -240,13 +240,12 @@ def data_astimezone(data, cols):
 class DataModel(Collection):
     modelType = 'DataModel'
 
-    def __init__(self, dbName, modelName=None, extParam=None):
-        modelName = self.__class__.__name__ if modelName is None else modelName
+    def __init__(self, dbName, modelName, extParam=None):
+        self.modelName = modelName
         self._modelExtParam = extParam
         collName = modelName if extParam is None else modelName + '_' + extParam
 
         super().__init__(dbName, collName)
-        self.modelName = modelName
         schema = find_schemaModel(dbName, modelName)
         if schema is not None: self.schema = schema
 
