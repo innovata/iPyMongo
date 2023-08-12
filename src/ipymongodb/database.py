@@ -35,32 +35,30 @@ except ConnectionFailure:
     raise
 
 
-def get_db(db_name): return client[db_name]
 
-
-def print_colunqval(m, cols):
-    for c in cols:
-        li = m.distinct(c)
-        print(c, len(li), li if len(li) < 10 else li[:10])
-
-
-def validate_collection(m): pp.pprint(db.validate_collection(m.collName))
-
-
-def collection_names(pat):
+def __collection_names__(db_name, pat):
     f = {'name':{'$regex':pat, '$options':'i'}}
     # f = {}
-    names = db.list_collection_names(filter=f)
-    print({'컬렉션Len': len(names)})
-    def __view__(name):
-        _names = []
-        for name in names:
-            _name = name.split('_')[0]
-            _names.append(_name)
-        _names = sorted(set(_names))
-        print({'모델명': _names})
+    db = client[db_name]
+    return db.list_collection_names(filter=f)
 
-    __view__(names)
+
+def collection_names(db_name, pat):
+    names = __collection_names__(db_name, pat)
+    logger.info({'컬렉션개수': len(names)})
     return sorted(names)
+
+
+"""데이타모델에 대한 것. 스키마모델은 해당안됨"""
+def model_names(db_name, pat):
+    names = __collection_names__(db_name, pat)
+    models = []
+    for name in names:
+        _name = name.split('_')[0]
+        models.append(_name)
+    models = sorted(set(models))
+
+    logger.info({'모델개수(파생된 컬렉션들은 중복제거)': len(models)})
+    return models
 
 

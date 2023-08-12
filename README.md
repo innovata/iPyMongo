@@ -1,3 +1,6 @@
-# iPyMongoDB
+# iPyMongoDB (innovata-pymongo-database)
  
- pymongo 패키지 Wrapper
+파이썬 pymongo 패키지 Wrapper
+
+
+## 사용법 

@@ -13,10 +13,7 @@ import pandas as pd
 
 
 from ipylib.idebug import *
-from ipylib.datacls import BaseDataClass
-from ipylib.idatetime import DatetimeParser
-from ipylib.iparser import DtypeParser
-from ipylib.ifile import FileReader, FileWriter, search_file
+from ipylib import datacls, idatetime, iparser, ifile
 
 
 from ipymongodb import database
@@ -28,10 +25,17 @@ class Collection(collection.Collection):
 
     def __init__(self, dbName, collName, create=False, **kw):
         db = database.client[dbName]
+        self._Database__name = db._Database__name
         super().__init__(db, collName, create, **kw)
     
     @property
+    def dbName(self): return self._Database__name
+    @property
     def collName(self): return self.name
+
+    def validate(self): 
+        db = database.client[self.dbName]
+        pp.pprint(db.validate_collection(self.collName))
 
     def insert_data(self, data):
         try: self.insert_many(data)
@@ -45,12 +49,13 @@ class Collection(collection.Collection):
             d = list(c)[0]
         except Exception as e: return None
         else:
-            if type == 'dcls': return BaseDataClass(**d)
+            if type == 'dcls': return datacls.BaseDataClass(**d)
             elif type == 'dict': return d
 
-    def validate(dbName, collName): 
-        db = database.client[dbName]
-        pp.pprint(db.validate_collection(collName))
+    def print_colunqval(self, columns): 
+        for c in columns:
+            li = self.distinct(c)
+            print(c, len(li), li if len(li) < 10 else li[:10])
 
 
 class SchemaModel(Collection):
@@ -132,7 +137,7 @@ class SchemaModel(Collection):
     @ctracer
     def create(self, csvFile):
         """SchemaCSV 파일을 읽어들인다"""
-        data = FileReader.read_csv(csvFile)
+        data = ifile.FileReader.read_csv(csvFile)
         print(pd.DataFrame(data))
         if data is None:
             logger.error({'파일': csvFile, 'data': data})
@@ -151,13 +156,10 @@ class SchemaModel(Collection):
         if len(data) == 0: 
             logger.error({'파일': csvFile, 'data': data})
         else:
-            FileWriter.write_csv(csvFile, self.colseq, data)
-
-    def define_schemaStructure(self, li):
-        if isinstance(li, list): self.SchemaStructure = li
-        else: raise
+            ifile.FileWriter.write_csv(csvFile, self.colseq, data)
 
     def add_schema(self, *args, **kwargs):
+        _vars = vars()
         if len(args) > 0:
             doc = {}
             columns = self.SchemaStructure.copy()
@@ -169,14 +171,15 @@ class SchemaModel(Collection):
         elif len(kwargs) > 0:
             f = {'column': kwargs.get('column')}
             self.update_one(f, {'$set': kwargs}, True)
-        else: raise
+        else: 
+            logger.error(['스키마정보를 입력하시오.', _vars])
 
     def parse_value(self, field, value):
         # 'field'를 이용하여 dtype을 가져온다
         ddict = self.DtypeDict.copy()
         if field in ddict:
             dtype = ddict[field]
-            return DtypeParser(value, dtype)
+            return iparser.DtypeParser(value, dtype)
         else:
             return value
 
@@ -193,7 +196,7 @@ class SchemaModel(Collection):
                     if dtype in [None,'None']:
                         pass
                     else:
-                        d[k] = DtypeParser(v, dtype)
+                        d[k] = iparser.DtypeParser(v, dtype)
         return data[0] if type == 'dict' else data
 
     def astimezone(self, data):
@@ -201,21 +204,28 @@ class SchemaModel(Collection):
         for d in data:
             for c in dtcols:
                 if c in d:
-                    d[c] = DatetimeParser(d[c])
+                    d[c] = idatetime.DatetimeParser(d[c])
         return data
-
-    def view(self, f=None, p={'_id':0}, sort=[('dtype',1), ('column',1)], **kw):
-        df = self.__view__(f, p, sort, **kw)
-        return df.fillna('_')
 
     def __view__(self, f, p, sort, **kw):
         cursor = self.find(f, p, sort=sort, **kw)
         df = pd.DataFrame(list(cursor))
         return df.reindex(columns=self.SchemaStructure)
-
-    def view01(self):
+    
+    def view(self, f=None, p={'_id':0}, sort=[('dtype',1), ('column',1)], **kw):
         self.delete_many({'column': None})
-        return self.view()
+        df = self.__view__(f, p, sort, **kw)
+        return df.fillna('_')
+
+
+"""스키마모델이 존재하는 체크"""
+def find_schemaModel(dbName, modelName):
+    collName = f"_Schema_{modelName}"
+    names = database.collection_names(dbName, pat=f"^{collName}$")
+    if len(names) == 0:
+        logger.warning(f"해당모델 '{modelName}'은 스키마가 정의되어 있지 않다")
+    elif len(names) == 1:
+        return SchemaModel(dbName, modelName)
 
 
 """스키마정의없이 사용하는 모델의 datetime컬럼을 파싱"""
@@ -237,7 +247,8 @@ class DataModel(Collection):
 
         super().__init__(dbName, collName)
         self.modelName = modelName
-        self.schema = SchemaModel(modelName)
+        schema = find_schemaModel(dbName, modelName)
+        if schema is not None: self.schema = schema
 
     @property
     def is_extended(self): return True if hasattr(self, '_modelExtParam') else False
@@ -248,7 +259,7 @@ class DataModel(Collection):
         cursor = self.find(filter, {colName:1}, sort=[(colName, DESCENDING)], limit=1)
         try:
             d = list(cursor)[0]
-            return DatetimeParser(d[colName])
+            return idatetime.DatetimeParser(d[colName])
         except Exception as e:
             logger.info(e)
 
@@ -257,7 +268,7 @@ class DataModel(Collection):
         # 쌩데이타 로딩
         file = os.path.join(CONFIG.DATA_FILE_PATH, f'{self.modelName}.json')
         print(file)
-        data = FileReader.read_json(file)
+        data = ifile.FileReader.read_json(file)
         if data is None: pass
         else:
             # 데이타 파싱: 스키마적용
@@ -276,7 +287,7 @@ class DataModel(Collection):
             for d in data:
                 if id: d.update({'_id':str(d['_id'])})
                 else: del d['_id']
-            FileWriter.write_json(file, data)
+            ifile.FileWriter.write_json(file, data)
         else:
             logger.error('len(data) is 0.')
     
@@ -290,30 +301,36 @@ class DataModel(Collection):
         data = self.load(f, p, sort, **kw)
         return pd.DataFrame(data)
     
-    def upsert_data(self, data):
-        keycols = self.schema.keycols
-        for d in data:
-            if len(keycols) > 0:
-                filter = {k:v for k,v in d.items() if k in keycols}
-            else:
-                filter = d.copy()
-            self.update_one(filter, {'$set':d}, True)
+    def __view__(self, f=None, p={'_id':0}, **kw):
+        df = self.load_frame(f, p, **kw)
+        try:
+            return df.reindex(columns=self.viewColumnOrder)
+        except Exception as e:
+            return df
+
+    def view(self, f=None, p={'_id':0}, sort=[('dt',-1)], **kw):
+        return self.__view__(f, p, sort=sort, **kw)
     
-    def parse_data(self, data): return self.schema.parse_data(data)
+    def upsert_data(self, data):
+        if hasattr(self, 'schema'):
+            keycols = self.schema.keycols
+            for d in data:
+                if len(keycols) > 0:
+                    filter = {k:v for k,v in d.items() if k in keycols}
+                else:
+                    filter = d.copy()
+                self.update_one(filter, {'$set':d}, True)
+        else: 
+            pass 
+    
+    def parse_data(self, data): 
+        if hasattr(self, 'schema'):
+            return self.schema.parse_data(data)
+        else: 
+            return data
 
     """스키마가 없거나, 추가로 특정 컬럼들에 대해 시간대를 조정할 때 사용"""
     def astimezone(self, data, cols): return data_astimezone(data, cols)
-    
-    def dedup(self, subset=None):
-        subset = self.schema.distinct('column', {'role':{'$in':['key']}}) if subset is None else subset
-        data = self.load()
-        df = pd.DataFrame(data)
-        cols = list(df.columns)
-        subset = [e for e in subset if e in cols]
-        TF = df.duplicated(subset=subset, keep='first')
-        dup_ids = list(df[TF]._id)
-        self.delete_many({'_id':{'$in':dup_ids}})
-        logger.info('Done.')
     
     """MongoDB 파이프라인을 이용한 중복제거"""
     def __dedup_data__(self, subset):
@@ -345,8 +362,16 @@ class DataModel(Collection):
             # print(df)
             # break
             self.delete_many({'_id': {'$in': delete_ids}})
-    
-    def dedup_data(self, subset): self.__dedup_data__(subset)
+        
+    def dedup_data(self, subset=None):
+        if subset is None:
+            if hasattr(self, 'schema'):
+                subset = self.schema.keycols
+                self.__dedup_data__(subset)
+            else:
+                logger.warning([self, '스키마가 없으므로 서브셋을 지정해야 중복작업을 수행할 수 있다'])
+        else:
+            self.__dedup_data__(subset)
 
     def insert_document(self, input):
         if isinstance(input, list) or isinstance(input, tuple):
@@ -356,15 +381,8 @@ class DataModel(Collection):
             self.update_one(filter, {'$set':doc}, True)
         else: raise
     
-    def view(self, f=None, p={'_id':0}, sort=[('dt',-1)], **kw):
-        df = self.load_frame(f, p, sort=sort, **kw)
-        logger.info({'DataLen': len(df)})
-        try:
-            return df.reindex(columns=self.viewColumnOrder)
-        except Exception as e:
-            return df 
     
-    def print_colunqval(self, columns): database.print_colunqval(self, columns)
+    
 
     
 
