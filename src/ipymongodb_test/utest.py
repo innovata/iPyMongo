@@ -48,6 +48,7 @@ class ipymongodb_collection(unittest.TestCase):
         o = self.collection
         print(o)
         pp.pprint(o.__dict__)
+        print(sorted(dir(o)))
 
         print(o.dbName)
         print(o.collName)
@@ -95,8 +96,6 @@ class ipymongodb_collection(unittest.TestCase):
     def test107(self):
         self.schemaModel.parse_data()
     def test108(self):
-        self.schemaModel.astimezone()
-    def test109(self):
         df = self.schemaModel.view()
         print(df)
 

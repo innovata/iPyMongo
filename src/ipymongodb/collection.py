@@ -198,14 +198,6 @@ class SchemaModel(Collection):
                         d[k] = iparser.DtypeParser(v, dtype)
         return data[0] if type == 'dict' else data
 
-    def astimezone(self, data):
-        dtcols = self.dtcols
-        for d in data:
-            for c in dtcols:
-                if c in d:
-                    d[c] = idatetime.DatetimeParser(d[c])
-        return data
-
     def __view__(self, f, p, sort, **kw):
         cursor = self.find(f, p, sort=sort, **kw)
         df = pd.DataFrame(list(cursor))
@@ -241,15 +233,13 @@ class DataModel(Collection):
 
     def __init__(self, dbName, modelName, extParam=None):
         self.modelName = modelName
-        self._modelExtParam = extParam
+        self.modelExtParam = extParam
         collName = modelName if extParam is None else modelName + '_' + extParam
-
         super().__init__(dbName, collName)
-        schema = find_schemaModel(dbName, modelName)
-        if schema is not None: self.schema = schema
 
+    def get_schema(self): return find_schemaModel(self.dbName, self.modelName)
     @property
-    def is_extended(self): return True if hasattr(self, '_modelExtParam') else False
+    def is_extended(self): return True if hasattr(self, 'modelExtParam') else False
     @property
     def last_dt(self): return self._get_ultimo_dt()
 
@@ -262,30 +252,31 @@ class DataModel(Collection):
             logger.info(e)
 
     """JSON파일 --> DB"""
-    def create(self):
+    def create(self, jsonFile):
         # 쌩데이타 로딩
-        file = os.path.join(CONFIG.DATA_FILE_PATH, f'{self.modelName}.json')
-        print(file)
-        data = ifile.FileReader.read_json(file)
+        data = ifile.FileReader.read_json(jsonFile)
         if data is None: pass
         else:
             # 데이타 파싱: 스키마적용
-            data = self.schema.parse_data(data)
-            pp.pprint(data)
+            schema = self.get_schema()
+            if schema is None: 
+                pass 
+            else:
+                data = schema.parse_data(data)
+                pp.pprint(data)
+            
             # DB저장
             # self.drop()
             # self.insert_data(data)
 
     """DB --> JSON파일"""
-    def backup(self, _dir=None, f=None, p=None, s=None, id=False):
-        _dir = CONFIG.BACKUP_PATH if _dir is None else _dir
-        file = os.path.join(_dir, f"{self.modelName}.json")
-        data = self.load(f, p, sort=s)
+    def backup(self, jsonFile):
+        data = self.load({}, {'_id':0})
         if len(data) > 0:
             for d in data:
                 if id: d.update({'_id':str(d['_id'])})
                 else: del d['_id']
-            ifile.FileWriter.write_json(file, data)
+            ifile.FileWriter.write_json(jsonFile, data)
         else:
             logger.error('len(data) is 0.')
     
@@ -293,7 +284,7 @@ class DataModel(Collection):
         cursor = self.find(f, p, sort=sort, **kw)
         data = list(cursor)
         logger.debug({'modelName': self.modelName, 'DataLen': len(data)})
-        return self.schema.astimezone(data)
+        return self.astimezone(data)
     
     def load_frame(self, f=None, p={'_id':0}, sort=[('dt',-1)], **kw):
         data = self.load(f, p, sort, **kw)
@@ -310,25 +301,36 @@ class DataModel(Collection):
         return self.__view__(f, p, sort=sort, **kw)
     
     def upsert_data(self, data):
-        if hasattr(self, 'schema'):
-            keycols = self.schema.keycols
+        schema = self.get_schema()
+        if schema is None: 
+            pass 
+        else:
+            keycols = schema.keycols
             for d in data:
                 if len(keycols) > 0:
                     filter = {k:v for k,v in d.items() if k in keycols}
                 else:
                     filter = d.copy()
                 self.update_one(filter, {'$set':d}, True)
-        else: 
-            pass 
     
     def parse_data(self, data): 
-        if hasattr(self, 'schema'):
-            return self.schema.parse_data(data)
-        else: 
+        schema = self.get_schema()
+        if schema is None: 
             return data
+        else:
+            return schema.parse_data(data)
 
     """스키마가 없거나, 추가로 특정 컬럼들에 대해 시간대를 조정할 때 사용"""
-    def astimezone(self, data, cols): return data_astimezone(data, cols)
+    def astimezone(self, data, cols=None):
+        if cols is None:
+            schema = self.get_schema()
+            if schema is None: 
+                logger.warning(['스키마가 없다면 datetime 컬럼들을 특정해야한다.', self])
+                return data 
+            else:
+                return data_astimezone(data, schema.dtcols)
+        else:
+            return data_astimezone(data, cols)
     
     """MongoDB 파이프라인을 이용한 중복제거"""
     def __dedup_data__(self, subset):
@@ -363,20 +365,25 @@ class DataModel(Collection):
         
     def dedup_data(self, subset=None):
         if subset is None:
-            if hasattr(self, 'schema'):
-                subset = self.schema.keycols
-                self.__dedup_data__(subset)
-            else:
+            schema = self.get_schema()
+            if schema is None: 
                 logger.warning([self, '스키마가 없으므로 서브셋을 지정해야 중복작업을 수행할 수 있다'])
+            else:
+                subset = schema.keycols
+                self.__dedup_data__(subset)
         else:
             self.__dedup_data__(subset)
 
     def insert_document(self, input):
         if isinstance(input, list) or isinstance(input, tuple):
-            doc = {}
-            for k, v in zip(self.schema.SchemaStructure, input):
-                doc.update({k: v})
-            self.update_one(filter, {'$set':doc}, True)
+            schema = self.get_schema()
+            if schema is None: 
+                pass 
+            else:
+                doc = {}
+                for k, v in zip(schema.SchemaStructure, input):
+                    doc.update({k: v})
+                self.update_one(filter, {'$set':doc}, True)
         else: raise
     
     
