@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="ipymongodb",
-    version="0.3.0",
+    version="0.3.1",
     author="innovata sambong",
     author_email="iinnovata@gmail.com",
     description='pymongo 패키지 wrapper',

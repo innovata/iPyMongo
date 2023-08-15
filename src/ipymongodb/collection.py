@@ -35,7 +35,9 @@ class Collection(collection.Collection):
 
     def validate(self): 
         db = database.client[self.dbName]
-        pp.pprint(db.validate_collection(self.collName))
+        dic = db.validate_collection(self.collName)
+        pp.pprint(dic)
+        return dic
 
     def insert_data(self, data):
         try: self.insert_many(data)
@@ -137,7 +139,6 @@ class SchemaModel(Collection):
     def create(self, csvFile):
         """SchemaCSV 파일을 읽어들인다"""
         data = ifile.FileReader.read_csv(csvFile)
-        print(pd.DataFrame(data))
         if data is None:
             logger.error({'파일': csvFile, 'data': data})
         else:
@@ -145,13 +146,15 @@ class SchemaModel(Collection):
             for i,d in enumerate(data): d['seq'] = i
             self.drop()
             self.insert_data(data)
+        
+        return pd.DataFrame(data)
 
     """DB --> CSV파일"""
     @ctracer
     def backup(self, csvFile):
         cursor = self.find(None, {'_id':0})
         data = list(cursor)
-        print(pd.DataFrame(data))
+        
         if len(data) == 0: 
             logger.error({'파일': csvFile, 'data': data})
         else:
@@ -263,11 +266,10 @@ class DataModel(Collection):
                 pass 
             else:
                 data = schema.parse_data(data)
-                pp.pprint(data)
             
             # DB저장
-            # self.drop()
-            # self.insert_data(data)
+            self.drop()
+            self.insert_data(data)
 
     """DB --> JSON파일"""
     def backup(self, jsonFile, include_ids=False):
@@ -353,11 +355,11 @@ class DataModel(Collection):
                 }
             }
         ]
-        print('\n파이프라인:')
-        pp.pprint(pipeline)
+        # print('\n파이프라인:')
+        # pp.pprint(pipeline)
 
         duplicates = list(self.aggregate(pipeline))
-        print({'DuplicatesLen': len(duplicates)})
+        logger.debug({'DuplicatesLen': len(duplicates)})
         for dup_group in duplicates:
             keep_id, *delete_ids = dup_group['uniqueIds']
             # print([keep_id, len(delete_ids)])
