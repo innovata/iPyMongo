@@ -270,15 +270,18 @@ class DataModel(Collection):
             # self.insert_data(data)
 
     """DB --> JSON파일"""
-    def backup(self, jsonFile):
-        data = self.load({}, {'_id':0})
+    def backup(self, jsonFile, include_ids=False):
+        if include_ids:
+            data = self.load()
+            # _id 를 스트링으로 변환
+            for d in data: d.update({'_id': str(d['_id'])})
+        else: 
+            data = self.load({}, {'_id':0})
+
         if len(data) > 0:
-            for d in data:
-                if id: d.update({'_id':str(d['_id'])})
-                else: del d['_id']
             ifile.FileWriter.write_json(jsonFile, data)
         else:
-            logger.error('len(data) is 0.')
+            logger.warning('len(data) is 0.')
     
     def load(self, f=None, p={'_id':0}, sort=[('dt',-1)], **kw):
         cursor = self.find(f, p, sort=sort, **kw)
