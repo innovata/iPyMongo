@@ -35,6 +35,9 @@ except ConnectionFailure:
     raise
 
 
+def get_db(db_name):
+    return client[db_name]
+
 
 def __collection_names__(db_name, pat):
     f = {'name':{'$regex':pat, '$options':'i'}}
