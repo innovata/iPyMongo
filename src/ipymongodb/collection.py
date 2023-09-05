@@ -217,7 +217,7 @@ def find_schemaModel(dbName, modelName):
     collName = f"_Schema_{modelName}"
     names = database.collection_names(dbName, pat=f"^{collName}$")
     if len(names) == 0:
-        logger.warning(f"해당모델 '{modelName}'은 스키마가 정의되어 있지 않다")
+        logger.debug(f"해당모델 '{modelName}'은 스키마가 정의되어 있지 않다")
     elif len(names) == 1:
         return SchemaModel(dbName, modelName)
 
@@ -252,7 +252,7 @@ class DataModel(Collection):
             d = list(cursor)[0]
             return idatetime.DatetimeParser(d[colName])
         except Exception as e:
-            logger.info(e)
+            logger.error(e)
 
     """JSON파일 --> DB"""
     def create(self, jsonFile):
@@ -330,7 +330,7 @@ class DataModel(Collection):
         if cols is None:
             schema = self.get_schema()
             if schema is None: 
-                logger.warning(['스키마가 없다면 datetime 컬럼들을 특정해야한다.', self])
+                logger.debug(['스키마가 없다면 datetime 컬럼들을 특정해야한다.', self])
                 return data 
             else:
                 return data_astimezone(data, schema.dtcols)

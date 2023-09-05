@@ -48,7 +48,7 @@ def __collection_names__(db_name, pat):
 
 def collection_names(db_name, pat):
     names = __collection_names__(db_name, pat)
-    logger.info({'컬렉션개수': len(names)})
+    logger.debug({'컬렉션개수': len(names)})
     return sorted(names)
 
 
@@ -61,7 +61,7 @@ def model_names(db_name, pat):
         models.append(_name)
     models = sorted(set(models))
 
-    logger.info({'모델개수(파생된 컬렉션들은 중복제거)': len(models)})
+    logger.debug({'모델개수(파생된 컬렉션들은 중복제거)': len(models)})
     return models
 
 
