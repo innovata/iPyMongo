@@ -4,6 +4,7 @@ Collection Level APIs
 """
 import os 
 from datetime import datetime
+import math 
 
 
 from pymongo import collection, ASCENDING, DESCENDING
@@ -30,13 +31,13 @@ class Collection(collection.Collection):
     
     @property
     def dbName(self): return self._Database__name
+    
     @property
-    def collName(self): return self.name
+    def collName(self): return self._Collection__name
 
     def validate(self): 
         db = database.client[self.dbName]
         dic = db.validate_collection(self.collName)
-        pp.pprint(dic)
         return dic
 
     def insert_data(self, data):
@@ -60,6 +61,20 @@ class Collection(collection.Collection):
             print(c, len(li), li if len(li) < 10 else li[:10])
 
 
+
+class Field:
+
+    # @tracer.debug
+    def __init__(self, column, dtype, **kwargs):
+        
+        self.column = column
+        self.dtype = dtype 
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+
+
 class SchemaModel(Collection):
     # column: 컬럼명
     # dtype: 데이터 타입
@@ -78,27 +93,37 @@ class SchemaModel(Collection):
 
     def get_cols(self, **kw):
         f = {}
-        for k,v in kw.items(): f.update({k: {'$regex': v}})
+        for k,v in kw.items(): 
+            f.update({k: {'$regex': v}})
         return self.distinct('column', f)
 
     @property
     def schema(self): return self.__get_cols__()
+    
     @property
     def allcols(self): return self.__get_cols__()
+    
     @property
     def keycols(self): return self.__get_cols__({'role':{'$regex':'key'}})
+    
     @property
     def numcols(self): return self.__get_cols__({'dtype':{'$regex':'int|int_abs|float|pct'}})
+    
     @property
     def intcols(self): return self.__get_cols__({'dtype':{'$regex':'int|int_abs'}})
+    
     @property
     def flcols(self): return self.__get_cols__({'dtype':{'$regex':'float'}})
+    
     @property
     def pctcols(self): return self.__get_cols__({'dtype':{'$regex':'pct'}})
+    
     @property
     def dtcols(self): return self.__get_cols__({'dtype':{'$regex':'time|date|datetime'}})
+    
     @property
     def strcols(self): return self.__get_cols__({'dtype':'str'})
+    
     @property
     def colseq(self):
         try:
@@ -117,6 +142,7 @@ class SchemaModel(Collection):
     def DtypeDict(self):
         cursor = self.find(None, {'_id':0, 'column':1, 'dtype':1})
         return {d['column']:d['dtype'] for d in list(cursor)}
+    
     @property
     def inputFormat(self):
         fmt = {}
@@ -135,7 +161,7 @@ class SchemaModel(Collection):
         return fmt
 
     """CSV파일 --> DB"""
-    @ctracer
+    @tracer.info
     def create(self, csvFile):
         """SchemaCSV 파일을 읽어들인다"""
         data = ifile.FileReader.read_csv(csvFile)
@@ -150,7 +176,7 @@ class SchemaModel(Collection):
         return pd.DataFrame(data)
 
     """DB --> CSV파일"""
-    @ctracer
+    @tracer.info
     def backup(self, csvFile):
         cursor = self.find(None, {'_id':0})
         data = list(cursor)
@@ -185,21 +211,35 @@ class SchemaModel(Collection):
         else:
             return value
 
+    # @tracer.debug
     def parse_data(self, data):
-        if isinstance(data, dict): type, data = 'dict', [data]
-        elif isinstance(data, list): type, data = 'list', data
-        else: raise
+        if isinstance(data, dict): 
+            type, data = 'dict', [data]
+        elif isinstance(data, list): 
+            type, data = 'list', data
+        else: 
+            raise
 
-        ddict = self.DtypeDict.copy()
-        for d in data:
-            for k,v in d.items():
-                if k in ddict:
-                    dtype = ddict[k]
-                    if dtype in [None,'None']:
-                        pass
-                    else:
-                        d[k] = iparser.DtypeParser(v, dtype)
-        return data[0] if type == 'dict' else data
+        try:
+            if isinstance(self.DtypeDict, dict):
+                ddict = self.DtypeDict.copy()
+                for d in data:
+                    for k, v in d.items():
+                        if k in ddict:
+                            dtype = ddict[k]
+                            if dtype in [None,'None']:
+                                pass
+                            else:
+                                if v == math.nan:
+                                    d[k] = iparser.DtypeParser(v, dtype)
+                                else:
+                                    pass 
+                return data[0] if type == 'dict' else data
+            else:
+                return data
+        except Exception as e:
+            logger.error(e)
+            return data
 
     def __view__(self, f, p, sort, **kw):
         cursor = self.find(f, p, sort=sort, **kw)
@@ -210,6 +250,7 @@ class SchemaModel(Collection):
         self.delete_many({'column': None})
         df = self.__view__(f, p, sort, **kw)
         return df.fillna('_')
+
 
 
 """스키마모델이 존재하는 체크"""
@@ -231,6 +272,7 @@ def data_astimezone(data, cols):
     return data
 
 
+
 class DataModel(Collection):
     modelType = 'DataModel'
 
@@ -240,11 +282,35 @@ class DataModel(Collection):
         collName = modelName if extParam is None else modelName + '_' + extParam
         super().__init__(dbName, collName)
 
-    def get_schema(self): return find_schemaModel(self.dbName, self.modelName)
+    # 필드클래스를 이용한 스키마생성
+    @tracer.info
+    def create_schema(self):
+        if hasattr(self, 'Schema'):
+            schema = SchemaModel(self.dbName, self.modelName)
+            for field in self.Schema:
+                if isinstance(field, Field):
+                    schema.update_one(
+                        {'column': field.column},
+                        {'$set': field.__dict__},
+                        True,
+                    )
+                else:
+                    logger.error('ipymongodb.collection.Field 클래스만 허용된다.')
+                    raise 
+        else:
+            logger.warning('특정 DataModel 클래스 내부에 "Schema" 라는 변수에 리스트로 스키마를 정의해야한다')
+
+    @tracer.debug
+    def get_schema(self): 
+        return SchemaModel(self.dbName, self.modelName)
+    
     @property
-    def is_extended(self): return True if hasattr(self, 'modelExtParam') else False
+    def is_extended(self): 
+        return True if hasattr(self, 'modelExtParam') else False
+    
     @property
-    def last_dt(self): return self._get_ultimo_dt()
+    def last_dt(self): 
+        return self._get_ultimo_dt()
 
     def _get_ultimo_dt(self, filter=None, colName='dt'):
         cursor = self.find(filter, {colName:1}, sort=[(colName, DESCENDING)], limit=1)
@@ -255,6 +321,7 @@ class DataModel(Collection):
             logger.error(e)
 
     """JSON파일 --> DB"""
+    @tracer.info
     def create(self, jsonFile):
         # 쌩데이타 로딩
         data = ifile.FileReader.read_json(jsonFile)
@@ -272,6 +339,7 @@ class DataModel(Collection):
             self.insert_data(data)
 
     """DB --> JSON파일"""
+    @tracer.info
     def backup(self, jsonFile, include_ids=False):
         if include_ids:
             data = self.load()
@@ -285,11 +353,15 @@ class DataModel(Collection):
         else:
             logger.warning('len(data) is 0.')
     
+    @tracer.debug
     def load(self, f=None, p={'_id':0}, sort=[('dt',-1)], **kw):
         cursor = self.find(f, p, sort=sort, **kw)
         data = list(cursor)
         logger.debug({'modelName': self.modelName, 'DataLen': len(data)})
-        return self.astimezone(data)
+        schema = self.get_schema()
+        return schema.parse_data(data)
+        # return data
+        # return self.astimezone(data)
     
     def load_frame(self, f=None, p={'_id':0}, sort=[('dt',-1)], **kw):
         data = self.load(f, p, sort, **kw)
@@ -355,17 +427,11 @@ class DataModel(Collection):
                 }
             }
         ]
-        # print('\n파이프라인:')
-        # pp.pprint(pipeline)
 
         duplicates = list(self.aggregate(pipeline))
         logger.debug({'DuplicatesLen': len(duplicates)})
         for dup_group in duplicates:
             keep_id, *delete_ids = dup_group['uniqueIds']
-            # print([keep_id, len(delete_ids)])
-            # df = self.view({'_id': {'$in': delete_ids}}, sort=[('date',1)])
-            # print(df)
-            # break
             self.delete_many({'_id': {'$in': delete_ids}})
         
     def dedup_data(self, subset=None):
