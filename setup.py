@@ -11,7 +11,7 @@ PROJECT_PACKAGE_DIR = 'src'
 
 setuptools.setup(
     name="ipymongodb",
-    version="0.4.2",
+    version="0.5.0",
     author="innovata sambong",
     author_email="iinnovata@gmail.com",
     description='pymongo 패키지 wrapper',
