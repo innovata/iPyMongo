@@ -17,6 +17,7 @@ from ipylib.idebug import *
 from ipylib import datacls, idatetime, iparser, ifile
 
 
+from ipymongodb.client import client
 from ipymongodb import database
 
 
@@ -25,7 +26,7 @@ from ipymongodb import database
 class Collection(collection.Collection):
 
     def __init__(self, dbName, collName, create=False, **kw):
-        db = database.client[dbName]
+        db = client[dbName]
         self._Database__name = db._Database__name
         super().__init__(db, collName, create, **kw)
     
@@ -36,7 +37,7 @@ class Collection(collection.Collection):
     def collName(self): return self._Collection__name
 
     def validate(self): 
-        db = database.client[self.dbName]
+        db = client[self.dbName]
         dic = db.validate_collection(self.collName)
         return dic
 

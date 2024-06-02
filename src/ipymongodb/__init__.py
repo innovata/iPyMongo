@@ -1,7 +1,2 @@
-from importlib import reload
-
-
-from ipymongodb import database, collection
-
-
-for module in [database, collection]: reload(module)
+# -*- coding: utf-8 -*-
+from ipymongodb import client, database, collection
