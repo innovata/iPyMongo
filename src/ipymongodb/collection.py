@@ -26,15 +26,10 @@ from ipymongodb import database
 class Collection(collection.Collection):
 
     def __init__(self, dbName, collName, create=False, **kw):
-        db = client[dbName]
-        self._Database__name = db._Database__name
-        super().__init__(db, collName, create, **kw)
-    
-    @property
-    def dbName(self): return self._Database__name
-    
-    @property
-    def collName(self): return self._Collection__name
+        super().__init__(client[dbName], collName, create, **kw)
+        self._Database__name = self._Collection__database._Database__name
+        self.dbName = self._Collection__database._Database__name
+        self.collName = self._Collection__name
 
     def validate(self): 
         db = client[self.dbName]
@@ -42,7 +37,8 @@ class Collection(collection.Collection):
         return dic
 
     def insert_data(self, data):
-        try: self.insert_many(data)
+        try: 
+            self.insert_many(data)
         except Exception as e:
             msg = '빈데이터를 바로 인서트하는 경우는 비일비재하므로, 여기에서 경고처리한다'
             logger.warning([e, msg])
@@ -51,17 +47,20 @@ class Collection(collection.Collection):
         try:
             c = self.find(f, limit=1)
             d = list(c)[0]
-        except Exception as e: return None
+        except Exception as e: 
+            return None
         else:
-            if type == 'dcls': return datacls.BaseDataClass(**d)
-            elif type == 'dict': return d
+            if type == 'dcls': 
+                return datacls.BaseDataClass(**d)
+            elif type == 'dict': 
+                return d
 
     def print_colunqval(self, columns): 
         for c in columns:
             li = self.distinct(c)
             print(c, len(li), li if len(li) < 10 else li[:10])
 
-
+ 
 
 class Field:
 
@@ -175,17 +174,6 @@ class SchemaModel(Collection):
             self.insert_data(data)
         
         return pd.DataFrame(data)
-
-    """DB --> CSV파일"""
-    @tracer.info
-    def backup(self, csvFile):
-        cursor = self.find(None, {'_id':0})
-        data = list(cursor)
-        
-        if len(data) == 0: 
-            logger.error({'파일': csvFile, 'data': data})
-        else:
-            ifile.FileWriter.write_csv(csvFile, self.colseq, data)
 
     def add_schema(self, *args, **kwargs):
         _vars = vars()
@@ -338,21 +326,6 @@ class DataModel(Collection):
             # DB저장
             self.drop()
             self.insert_data(data)
-
-    """DB --> JSON파일"""
-    @tracer.info
-    def backup(self, jsonFile, include_ids=False):
-        if include_ids:
-            data = self.load()
-            # _id 를 스트링으로 변환
-            for d in data: d.update({'_id': str(d['_id'])})
-        else: 
-            data = self.load({}, {'_id':0})
-
-        if len(data) > 0:
-            ifile.FileWriter.write_json(jsonFile, data)
-        else:
-            logger.warning('len(data) is 0.')
     
     @tracer.debug
     def load(self, f=None, p={'_id':0}, sort=[('dt',-1)], **kw):
